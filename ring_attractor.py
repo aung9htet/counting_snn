@@ -132,6 +132,8 @@ class NeuronList:
             ts = events["times"]
             plt.plot(ts, np.full(shape=len(ts),fill_value=neuron.representation,dtype=np.int64), "k.")
         plt.ylim([0, POPULATION_SIZE + 20])
+        plt.xlabel("Timestep (0.1ms/step)")
+        plt.ylabel("Neuron Representation")
         plt.show()
     
     def add_noise(self, representation):
