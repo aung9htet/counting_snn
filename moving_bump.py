@@ -2,39 +2,24 @@ import nest
 import numpy as np
 import matplotlib.pyplot as plt
 
-POPULATION_SIZE = 80
+POPULATION_SIZE = 79
 
-"""
-    The following class will define the initialisation for the neuron and the information it will represent (as in readout values)
-"""
 class Neuron:
     def __init__(self, distance, representation):
-        # default parameters for neuron
         params = {
             "I_e": 120.0, "tau_m": 20.0
         }
-        # initialise neuron (Integrat and fire model)
         self.data = nest.Create("iaf_psc_alpha", params=params)
-        # what the neuron represents
         self.representation = representation
-        # distance away from the focused neuron
         self.distance = distance
-        # initialise spike recorder and connect to neuron
         self.spike_recorder = nest.Create("spike_recorder")
         nest.Connect(self.data, self.spike_recorder)
         self.next = None
         self.prev = None
-    
-    def get_metric(self):
-        TIME_HORIZON = 1200
-        times = self.spike_recorder.events['times']
-        return len(times[times > TIME_HORIZON])
 
-"""
-    The following class will define how the neurons will be connected and how it will define the representation for each neuron
-"""
 class NeuronList:
     def __init__(self):
+        nest.set_verbosity("M_ERROR")
         self.distance_arr = self.set_distance()
         self.neuron_list = np.array([])
         self.header = None
@@ -45,12 +30,12 @@ class NeuronList:
             Set the order of neurons onto which the distance will be sorted
         """
         dist_arr = None
-        for j in range(2):
+        for side in range(2):
             dist_row = np.array([])
             distance = 0
             side_size = int(np.floor((POPULATION_SIZE-1)/2))
             for i in range(side_size):
-                if j % 2 == 0:
+                if side % 2 == 0:
                     distance += 1
                 else:
                     distance -= 1
@@ -64,6 +49,7 @@ class NeuronList:
         if ((POPULATION_SIZE % 2) == 0):
             dist_return = np.append(dist_return, distance + 1)
         dist_return = np.append(dist_return, np.flip(dist_arr[1]))
+        print(dist_return)
         return np.flip(dist_return)
     
     def create_neuron_list(self):
@@ -77,7 +63,7 @@ class NeuronList:
                 self.neuron_list = np.append(self.neuron_list, self.header)
             else:
                 self.header.next = Neuron(self.distance_arr[i], num_rep)
-                self.header = self.header.next   
+                self.header = self.header.next
                 self.neuron_list = np.append(self.neuron_list, self.header)
                 self.header.prev = self.neuron_list[i-1]
             num_rep += 1
@@ -103,7 +89,7 @@ class NeuronList:
             self.header = self.header.next
         self.header = current_neuron
 
-    def get_weight(self, n2):
+    def get_weight(self, n1, n2):
         """
             calculate the weight where n1 is pre-synaptic and n2 is post-synaptic
         """
@@ -111,8 +97,9 @@ class NeuronList:
         A2 = 0.2
         sigma1 = 3
         sigma2 = 30
-        weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*0.2*np.exp(-np.abs(k)/sigma2)
-        distance = n2.distance
+        # weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*-0.5*np.exp(-np.abs(k)/sigma1)
+        weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*0.4*np.exp(-np.abs(k)/sigma2)
+        distance = n1.distance - n2.distance
         weight = weight_calc(distance)
         return weight
 
@@ -124,7 +111,7 @@ class NeuronList:
         data_dict = {}
         self.header = self.header.next
         for _ in self.neuron_list:
-            data_dict[self.header.representation] = listNeuron.get_weight(self.header)
+            data_dict[self.header.representation] = listNeuron.get_weight(current_neuron, self.header)
             self.header = self.header.next
         lists = sorted(data_dict.items())
         x, y = zip(*lists)
@@ -139,7 +126,7 @@ class NeuronList:
         for _ in self.neuron_list:
             current_neuron = self.header
             for _ in self.neuron_list:
-                syn_dict = {"weight": self.get_weight(self.header)}
+                syn_dict = {"weight": self.get_weight(current_neuron, self.header)}
                 nest.Connect(current_neuron.data, self.header.data, syn_spec=syn_dict)
                 self.header = self.header.next
             self.header = current_neuron.next
@@ -155,44 +142,17 @@ class NeuronList:
         plt.ylabel("Neuron Representation")
         plt.show()
     
-    def add_noise(self, representation, level = 10000.0):
+    def add_noise(self, representation):
         noise = nest.Create("poisson_generator")
-        noise.rate = level
+        noise.rate = 10000.0
         for i in range(representation[0], representation[1] + 1):
             while not self.header.representation == i:
                 self.header = self.header.next
             nest.Connect(noise, self.header.data, syn_spec={"weight": [[1.2]], "delay": 1.0})
-        return noise
-
-    def get_metric(self):
-        numerator = 0
-        denominator = 0
-        for idx, neuron in enumerate(self.neuron_list):
-            if (idx >= 20) and (idx <= 30):
-                numerator += neuron.get_metric()
-            else:
-                denominator += neuron.get_metric()
-        
-        numerator/= 10
-        denominator/=(POPULATION_SIZE-10)
-
-        return numerator/denominator if denominator > 0 else 0
-                
+ 
 listNeuron = NeuronList()
 listNeuron.connect_neurons()
 # listNeuron.show_weight(steps= 40)
-
-#for ..in
-# for ...
-
-listNeuron.add_noise((1,79),9000)
-noise = listNeuron.add_noise((20,30),2000)
-nest.Simulate(500)
-noise.rate = 0
+listNeuron.add_noise((20,30))
 nest.Simulate(1000)
-#N[i, j] = listNeuron.get_metric() 
-#if listNeuron.get_metric() > 20:
-#   print("There is bump")
-#else:
-#    print("There is no bump")
 listNeuron.plot_spikes()

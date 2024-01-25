@@ -350,7 +350,7 @@ class NumberLine():
     def set_model(self):
         current_high_spikes = []
         current_low_spikes = []
-        for i in range(BATCH_ITERATION):
+        for _ in range(BATCH_ITERATION):
             self.model.sp_noise.rate = self.current_internal_rate
             self.model.run_network()
             events = self.model.higher_srec.get("events")
