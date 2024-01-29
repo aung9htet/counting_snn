@@ -1,6 +1,7 @@
 import nest
 import numpy as np
 import matplotlib.pyplot as plt
+import csv
 
 POPULATION_SIZE = 80
 
@@ -8,11 +9,22 @@ POPULATION_SIZE = 80
     The following class will define the initialisation for the neuron and the information it will represent (as in readout values)
 """
 class Neuron:
-    def __init__(self, distance, representation):
+    def __init__(self, distance, representation, parameters = []):
         # default parameters for neuron
-        params = {
-            "I_e": 120.0, "tau_m": 20.0
-        }
+        if parameters == []:
+            params = {
+                "I_e": 120.0, "tau_m": 20.0
+            }
+        else:           
+            params = {
+                "E_L": parameters[0],
+                "C_m": parameters[1],
+                "tau_m": parameters[2],
+                "t_ref": parameters[3],
+                "V_th": parameters[4],
+                "V_reset": parameters[5],
+                "I_e": parameters[6]
+            }
         # initialise neuron (Integrat and fire model)
         self.data = nest.Create("iaf_psc_alpha", params=params)
         # what the neuron represents
@@ -26,7 +38,7 @@ class Neuron:
         self.prev = None
     
     def get_metric(self):
-        TIME_HORIZON = 1200
+        TIME_HORIZON = 300
         times = self.spike_recorder.events['times']
         return len(times[times > TIME_HORIZON])
 
@@ -34,10 +46,11 @@ class Neuron:
     The following class will define how the neurons will be connected and how it will define the representation for each neuron
 """
 class NeuronList:
-    def __init__(self):
+    def __init__(self, parameters = []):
         self.distance_arr = self.set_distance()
         self.neuron_list = np.array([])
         self.header = None
+        self.parameters = parameters
         self.create_neuron_list()
 
     def set_distance(self):
@@ -76,7 +89,7 @@ class NeuronList:
                 self.header = Neuron(self.distance_arr[i], num_rep)
                 self.neuron_list = np.append(self.neuron_list, self.header)
             else:
-                self.header.next = Neuron(self.distance_arr[i], num_rep)
+                self.header.next = Neuron(self.distance_arr[i], num_rep, parameters=self.parameters)
                 self.header = self.header.next   
                 self.neuron_list = np.append(self.neuron_list, self.header)
                 self.header.prev = self.neuron_list[i-1]
@@ -111,7 +124,7 @@ class NeuronList:
         A2 = 0.2
         sigma1 = 3
         sigma2 = 30
-        weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*0.2*np.exp(-np.abs(k)/sigma2)
+        weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*0*np.exp(-np.abs(k)/sigma2)
         distance = n2.distance
         weight = weight_calc(distance)
         return weight
@@ -165,34 +178,53 @@ class NeuronList:
         return noise
 
     def get_metric(self):
-        numerator = 0
+        numerator = 0 
         denominator = 0
         for idx, neuron in enumerate(self.neuron_list):
             if (idx >= 20) and (idx <= 30):
                 numerator += neuron.get_metric()
             else:
-                denominator += neuron.get_metric()
-        
-        numerator/= 10
-        denominator/=(POPULATION_SIZE-10)
+                denominator += neuron.get_metric()        
+        # numerator/= 10
+        # denominator/=(POPULATION_SIZE-10)
+        if denominator < 1:
+            denominator = 1
+        return numerator/denominator
+    
+with open('results/result1.csv', 'w', newline='') as csvfile:
 
-        return numerator/denominator if denominator > 0 else 0
-                
-listNeuron = NeuronList()
-listNeuron.connect_neurons()
-# listNeuron.show_weight(steps= 40)
-
-#for ..in
-# for ...
-
-listNeuron.add_noise((1,79),9000)
-noise = listNeuron.add_noise((20,30),2000)
-nest.Simulate(500)
-noise.rate = 0
-nest.Simulate(1000)
-#N[i, j] = listNeuron.get_metric() 
+    fieldnames = ['poisson_generator1', 'poisson_generator2', 'E_l', 'C_m', 'tau_m', 't_ref', 'V_th', 'V_reset', 'I_e', 'result']
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    writer.writerow({"poisson_generator1": "Poisson Generator 1", "poisson_generator2": "Poisson Generator 2", "E_l": "E_l", "C_m": "C_m", "tau_m": "tau_m", "t_ref": "t_ref", "V_th": "V_th", "V_reset": "V_reset", "I_e": "I_e", "result": "Result"})
+    
+    # params to test
+    params_pg1 = [1, 201] # in between 1-200Hz
+    params_pg2 = [1, 201] # in between 1-200Hz
+    params_e_l = -70 # Resting Membrane Potential (-70mV)
+    params_c_m = [500000, 1000000] # Capacity of the membrane (0.5-1 microFaraday)
+    params_tau_m = [1,100] # Membrane time constant (1-100 ms)
+    params_t_ref = [1,5] # Duration of refractory period (1-5 ms)
+    params_v_th = [0.22, 1.22] # Spike threshold (0.22-0.122 mV)
+    params_v_reset = [-80, -70] # Reset potential of the membrane (-80 - -70 mV)
+    params_i_e = [0, 10] # Constant input current (0-10 pA)
+    for pg1 in range(params_pg1[0], params_pg1[1]):
+        for pg2 in range(params_pg2[0], params_pg2[1]):
+            for c_m in range(params_c_m[0], params_c_m[1], 1000):            
+                for tau_m in range(params_tau_m[0], params_tau_m[1]):
+                    for t_ref in range(params_t_ref[0], params_t_ref[1]):
+                        for v_th in np.arange(params_v_th[0], params_v_th[1] + 0.05, 0.05):
+                            for v_reset in range(params_v_reset[0], params_v_reset[1], 2):
+                                for i_e in range(params_i_e[0], params_i_e[1]):
+                                    parameter_search = [params_e_l, c_m, tau_m, t_ref, v_th, v_reset, i_e]
+                                    print("Current Progress: pg1 = %s, pg2 = %s, params = %s" % (pg1, pg2, parameter_search))
+                                    listNeuron = NeuronList(parameter_search)
+                                    listNeuron.connect_neurons()
+                                    listNeuron.add_noise((1,79), pg1)
+                                    noise = listNeuron.add_noise((20,30), pg2)
+                                    nest.Simulate(500)
+                                    writer.writerow({"poisson_generator1": pg1, "poisson_generator2": pg2, "E_l": params_e_l, "C_m": c_m, "tau_m": tau_m, "t_ref": t_ref, "V_th": v_th, "V_reset": v_reset, "I_e": i_e, "result": listNeuron.get_metric()})
 #if listNeuron.get_metric() > 20:
 #   print("There is bump")
 #else:
 #    print("There is no bump")
-listNeuron.plot_spikes()
+# listNeuron.plot_spikes()
