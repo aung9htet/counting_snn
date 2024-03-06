@@ -2,13 +2,22 @@ import nest
 import numpy as np
 import matplotlib.pyplot as plt
 
-POPULATION_SIZE = 79
+POPULATION_SIZE = 100
+BETA = 2.16251
 
 class Neuron:
     def __init__(self, distance, representation):
         params = {
-            "I_e": 120.0, "tau_m": 20.0
-        }
+                "E_L": 0.0,
+                # "C_m": 1.0e-12,
+                "tau_m": 1.0,
+                "t_ref": 0.0,
+                "V_th": 1.0,
+                "V_reset": 0.0,
+                "I_e": 0.144,
+                "tau_syn_ex": BETA
+                # "tau_syn_in": BETA
+            }
         self.data = nest.Create("iaf_psc_alpha", params=params)
         self.representation = representation
         self.distance = distance
@@ -98,7 +107,12 @@ class NeuronList:
         sigma1 = 3
         sigma2 = 30
         # weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*-0.5*np.exp(-np.abs(k)/sigma1)
-        weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*0.4*np.exp(-np.abs(k)/sigma2)
+        # weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*0.4*np.exp(-np.abs(k)/sigma2)
+        w = lambda a, z: (1.0/np.sqrt(a*np.pi))*np.exp(-z**2/a)
+        J = lambda z: 5 * (1.1 * w(1/28, z) - w(1/20,z))
+        
+        # weight_calc = lambda k: (sigma2*np.exp(-k**2/(2*sigma1**2)) - sigma1*np.exp(-k**2/(2*sigma2**2)))/((sigma2 - sigma1))
+        weight_calc = lambda k: J(np.abs(k)/ POPULATION_SIZE)
         distance = n1.distance - n2.distance
         weight = weight_calc(distance)
         return weight
@@ -115,10 +129,10 @@ class NeuronList:
             self.header = self.header.next
         lists = sorted(data_dict.items())
         x, y = zip(*lists)
-        plt.plot(np.divide(x, 10),y)
+        plt.plot(x,y)
         plt.title("Mexican-hat shaped function on interneuron distance")
         plt.ylabel("Weight")
-        plt.xlabel("|x - y|")
+        plt.xlabel("Neuron Index")
         plt.show()
         self.header = current_neuron.representation
 
@@ -144,15 +158,36 @@ class NeuronList:
     
     def add_noise(self, representation):
         noise = nest.Create("poisson_generator")
-        noise.rate = 10000.0
-        for i in range(representation[0], representation[1] + 1):
+        noise.rate = 30000.0 #????????
+        for i in range(representation[0], representation[1]):
             while not self.header.representation == i:
                 self.header = self.header.next
-            nest.Connect(noise, self.header.data, syn_spec={"weight": [[1.2]], "delay": 1.0})
+            nest.Connect(noise, self.header.data, syn_spec={"weight": [[4.2]], "delay": 1.0})# ??????
+        return noise
+
+    def add_meter(self, rep_neuron):
+        meter = nest.Create('multimeter', params={'record_from': ['V_m']})
+        while not self.header.representation == rep_neuron:
+            self.header = self.header.next 
+        nest.Connect(meter, self.header.data)
+        return meter
  
 listNeuron = NeuronList()
 listNeuron.connect_neurons()
-# listNeuron.show_weight(steps= 40)
-listNeuron.add_noise((20,30))
+meter = listNeuron.add_meter(50)
+# listNeuron.show_weight(steps= 20)
+# noise1 = listNeuron.add_noise((1,78))
+# noise1.rate = 5000
+# ??????
+# Background noise ????
+# Replace inpout current with bkg noise
+noise = listNeuron.add_noise((20,30))
+nest.Simulate(10)
+noise.rate = 0.0
 nest.Simulate(1000)
 listNeuron.plot_spikes()
+events = nest.GetStatus(meter)[0]['events']
+t = events['times']
+plt.figure()
+plt.plot(t, events['V_m'])
+plt.show()

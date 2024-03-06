@@ -19,7 +19,8 @@ class Bump():
         self.connection_type = connection_type
         self.num_of_neurons = 100
         self.params = {
-            "I_e": 0.9
+            "I_e": 0.9, 
+            "V_th": 1
             }
         self.neurons = self.setup_neurons(self.num_of_neurons)
         self.setup_connections()
@@ -145,8 +146,8 @@ bump = Bump()
 # bump.plot_weight()
 beta = 1.5
 alpha = lambda t: beta * np.exp(-beta*t)
-pulse_time = 10
-noise = bump.set_noise(spike_range=[30,40],level=alpha(pulse_time))
+pulse_time = 100
+noise = bump.set_noise(spike_range=[30,50],level=alpha(pulse_time))
 pulse = bump.set_noise(level=20)
 print(alpha(pulse_time))
 nest.Simulate(pulse_time)
