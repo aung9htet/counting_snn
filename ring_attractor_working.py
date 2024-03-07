@@ -3,6 +3,8 @@ import nest
 import numpy as np
 import matplotlib.pyplot as plt
 import csv
+from datetime import datetime
+import pandas as pd
 
 POPULATION_SIZE = 100
 
@@ -10,7 +12,7 @@ POPULATION_SIZE = 100
     The following class will define the initialisation for the neuron and the information it will represent (as in readout values)
 """
 class Neuron:
-    def __init__(self, distance, representation, parameters = []):
+    def __init__(self, distance = None, representation = None, parameters = [], pulse_time = 0):
         # default parameters for neuron
         if parameters == []:
             params = {
@@ -39,22 +41,24 @@ class Neuron:
         nest.Connect(self.data, self.spike_recorder)
         self.next = None
         self.prev = None
+        self.pulse_time = pulse_time
     
     def get_metric(self):
-        TIME_HORIZON = 300
+        TIME_HORIZON = 700 + self.pulse_time
         times = self.spike_recorder.events['times']
         return len(times[times > TIME_HORIZON])
+    
 
 """
     The following class will define how the neurons will be connected and how it will define the representation for each neuron
 """
-class NeuronList:
-    def __init__(self, parameters = []):
+class NeuronList():
+    def __init__(self, parameters = [], pulse_time = 0):
         self.distance_arr = self.set_distance()
-        print(self.distance_arr)
         self.neuron_list = np.array([])
         self.header = None
         self.parameters = parameters
+        self.pulse_time = pulse_time
         self.create_neuron_list()
 
     def set_distance(self):
@@ -90,10 +94,10 @@ class NeuronList:
         num_rep = 1
         for i in range(len(self.distance_arr)):
             if i == 0:
-                self.header = Neuron(self.distance_arr[i], num_rep)
+                self.header = Neuron(self.distance_arr[i], num_rep, pulse_time = self.pulse_time)
                 self.neuron_list = np.append(self.neuron_list, self.header)
             else:
-                self.header.next = Neuron(self.distance_arr[i], num_rep, parameters=self.parameters)
+                self.header.next = Neuron(self.distance_arr[i], num_rep, parameters=self.parameters, pulse_time=self.pulse_time)
                 self.header = self.header.next   
                 self.neuron_list = np.append(self.neuron_list, self.header)
                 self.header.prev = self.neuron_list[i-1]
@@ -119,6 +123,26 @@ class NeuronList:
             self.header.distance = distance
             self.header = self.header.next
         self.header = current_neuron
+
+    def add_external_neurons(self, parameters, weight):
+        """
+            The neurons will have their own parameters different from the ring attractor's neurons
+            This is used to move the ring attractor
+        """
+        self.right = np.array([])
+        self.left = np.array([])
+        for neuron in self.neuron_list:
+            self.neuron_right = Neuron(parameters=parameters)
+            self.neuron_left = Neuron(parameters=parameters)
+            curr_neuron = neuron
+            prev_neuron = neuron.next
+            syn_dict = {"weight": weight}
+            nest.Connect(self.neuron_right, curr_neuron, syn_spec=syn_dict)
+            nest.Connect(prev_neuron, self.neuron_right, syn_spec=syn_dict)
+            nest.Connect(self.neuron_left, prev_neuron, syn_spec=syn_dict)
+            nest.Connect(curr_neuron, self.neuron_left, syn_spec=syn_dict)
+            self.right = np.append(self.right, self.neuron_right)
+            self.left = np.append(self.left, self.neuron_left)
 
     def get_weight(self, distance):
         """
@@ -197,82 +221,149 @@ class NeuronList:
         return noise
 
     def get_metric(self):
-        numerator = 0 
-        denominator = 0
+        within_range = 0 
+        out_of_range = 0
         for idx, neuron in enumerate(self.neuron_list):
             if (idx >= 20) and (idx <= 30):
-                numerator += neuron.get_metric()
+                within_range += neuron.get_metric()
             else:
-                denominator += neuron.get_metric()        
+                out_of_range += neuron.get_metric()        
         # numerator/= 10
-        # denominator/=(POPULATION_SIZE-10)
-        if denominator < 1:
+        # out_of_range/=(POPULATION_SIZE-10)
+        if out_of_range < 1:
             denominator = 1
-        return numerator/denominator
+        else:
+            denominator = out_of_range
+        result = (within_range - out_of_range)/ denominator
+        return result
 
-def parameter_search():
-    print(os.listdir(os.getcwd() + "/results"))
-    index = 1
-    filename = "results/result"
-    full_filename = filename + str(index) + ".csv"
-    while full_filename in os.listdir(os.getcwd() + "/results"):
-        index += 1
-        full_filename = filename + str(index) + ".csv"
-        print(full_filename)
+def parameter_search(numprocess):
+    current_rank = nest.Rank()
+    full_filename = "temp_results/results" + str(current_rank) + ".csv"
+    tau_syn_ex_range = [70, 100]
+    task_division = (tau_syn_ex_range[1] - tau_syn_ex_range[0])/ numprocess
+    start_tau_syn_ex = (current_rank * task_division) + 1 + tau_syn_ex_range[0]
+    end_tau_syn_ex =  ((current_rank + 1) * task_division) + 1 + tau_syn_ex_range[0]
+
     with open(full_filename, 'w', newline='') as csvfile:
 
-        fieldnames = ['I_e', 'Tau_Syn_Ex', 'result']
+        fieldnames = ['Pulse_time', 'I_e', 'Tau_Syn_Ex', 'result']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writerow({"I_e": "I_e", "Tau_Syn_Ex": "Tau_Syn_Ex", "result": "Result"})
+        writer.writerow({"Pulse_time": "Pulse_time", "I_e": "I_e", "Tau_Syn_Ex": "Tau_Syn_Ex", "result": "Result"})
         
         # params to test
-        params_pg1 = 100 # in between 1-200Hz
-        params_pg2 = 30000 # in between 1-200Hz
+        params_pg1 = 0 # in between 1-200Hz
+        params_pg2 = 200 # in between 1-200Hz
         params_e_l = 0.0 # Resting Membrane Potential (-70mV)
         params_c_m = 0.0 # Capacity of the membrane (0.5-1 microFaraday)
         params_tau_m = 1.0 # Membrane time constant (1-100 ms)
         params_t_ref = 0.0 # Duration of refractory period (1-5 ms)
         params_v_th = 1.0 # Spike threshold (0.22-0.122 mV)
         params_v_reset = 0.0 # Reset potential of the membrane (-80 - -70 mV)
+        params_pulse_time = np.arange(500, 700, 10)
         params_i_e = [0, 10] # Constant input current (0-10 pA)
-        params_tau_syn_ex = np.arange(1,10,0.1)
-        for i_e in range(params_i_e[0], params_i_e[1]):
-            for tau_syn_ex in params_tau_syn_ex:
-                # nest.Prepare()
-                parameter_search = [params_e_l, params_c_m, params_tau_m, params_t_ref, params_v_th, params_v_reset, i_e, tau_syn_ex]
-                print("Current Progress: params = %s" % (parameter_search))
-                listNeuron = NeuronList(parameter_search)
-                listNeuron.connect_neurons()
-                listNeuron.add_noise((1, 99), params_pg1)
-                noise = listNeuron.add_noise((20,30), params_pg2)
-                nest.Simulate(10)
-                noise.rate = 0
-                nest.Simulate(1000)
-                writer.writerow({"I_e": i_e, "Tau_Syn_Ex": tau_syn_ex, "result": listNeuron.get_metric()})
-                nest.ResetKernel()
+        params_tau_syn_ex = np.arange(start_tau_syn_ex, end_tau_syn_ex, 10)
+        for pulse_time in params_pulse_time:
+            for i_e in range(params_i_e[0], params_i_e[1]):    
+                for tau_syn_ex in params_tau_syn_ex:
+                    # nest.Prepare()
+                    parameter_search = [params_e_l, params_c_m, params_tau_m, params_t_ref, params_v_th, params_v_reset, i_e, tau_syn_ex]
+                    print("Current Progress: Pulse_time = %s, params = %s" % (pulse_time, parameter_search))
+                    listNeuron = NeuronList(parameter_search, pulse_time)
+                    listNeuron.connect_neurons()
+                    listNeuron.add_noise((1, 99), params_pg1)
+                    noise = listNeuron.add_noise((20,30), params_pg2)
+                    nest.Simulate(pulse_time)
+                    noise.rate = 0
+                    nest.Simulate(1000)
+                    writer.writerow({"Pulse_time": pulse_time, "I_e": i_e, "Tau_Syn_Ex": tau_syn_ex, "result": listNeuron.get_metric()})
+                    nest.ResetKernel()
+                    
+
+def combine_results():
+    cwd = os.getcwd() + "/temp_results"
+    files_to_add = [os.path.join(cwd, f) for f in os.listdir(cwd) if os.path.isfile(os.path.join(cwd, f))]
+    full_filename_to_save = "results/results" + str(datetime.now()) + ".csv"
+    with open(full_filename_to_save, 'w', newline='') as csvfilewriter:
+        fieldnames = ['Pulse_time', 'I_e', 'Tau_Syn_Ex', 'result']
+        writer = csv.DictWriter(csvfilewriter, fieldnames=fieldnames)
+        writer.writerow({"Pulse_time": "Pulse_time", "I_e": "I_e", "Tau_Syn_Ex": "Tau_Syn_Ex", "result": "Result"})
+        for file in files_to_add:
+            with open(file) as csvfile:
+                results_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+                i = 0
+                for row in results_reader:
+                    if i > 0:
+                        writer.writerow({"Pulse_time": row[0], "I_e": row[1], "Tau_Syn_Ex": row[2], "result": row[3]})
+                    i += 1
+    dataFrame = pd.read_csv(full_filename_to_save, delimiter=",")
+    dataFrame.sort_values(["Pulse_time", "I_e","Tau_Syn_Ex"], axis=0, ascending=True,inplace=True, na_position='first')
+    dataFrame.to_csv(full_filename_to_save, index = False)
+
 
 def single_test():
-    
     # params to test
-    params_pg1 = 100 # in between 1-200Hz
-    params_pg2 = 5000 # in between 1-200Hz
+    params_pg1 = 0 # in between 1-200Hz
+    params_pg2 = 200 # in between 1-200Hz
     params_e_l = 0.0 # Resting Membrane Potential (-70mV)
     params_c_m = 0.0 # Capacity of the membrane (0.5-1 microFaraday)
     params_tau_m = 1.0 # Membrane time constant (1-100 ms)
     params_t_ref = 0.0 # Duration of refractory period (1-5 ms)
     params_v_th = 1.0 # Spike threshold (0.22-0.122 mV)
     params_v_reset = 0.0 # Reset potential of the membrane (-80 - -70 mV)
-    params_i_e = 8 # Constant input current (0-10 pA)
-    params_tau_syn_ex = 15
+    params_i_e = 9 # Constant input current (0-10 pA)
+    params_tau_syn_ex = 93.5
     parameter_search = [params_e_l, params_c_m, params_tau_m, params_t_ref, params_v_th, params_v_reset, params_i_e, params_tau_syn_ex]
-
-    listNeuron = NeuronList(parameter_search)
+    pulse_time = 690
+    listNeuron = NeuronList(parameter_search, pulse_time=pulse_time)
     listNeuron.connect_neurons()
     listNeuron.add_noise((1, 99), params_pg1)
     noise = listNeuron.add_noise((80,90), params_pg2)
-    nest.Simulate(10)
+    nest.Simulate(pulse_time)
     noise.rate = 0
     nest.Simulate(1000)
+    print(listNeuron.get_metric())
+    listNeuron.plot_spikes()
+
+def add_movement():
+    # params for external neurons
+    move_params_pg1 = 0 # in between 1-200Hz
+    move_params_pg2 = 200 # in between 1-200Hz
+    move_params_e_l = 0.0 # Resting Membrane Potential (-70mV)
+    move_params_c_m = 0.0 # Capacity of the membrane (0.5-1 microFaraday)
+    move_params_tau_m = 1.0 # Membrane time constant (1-100 ms)
+    move_params_t_ref = 0.0 # Duration of refractory period (1-5 ms)
+    move_params_v_th = 1.0 # Spike threshold (0.22-0.122 mV)
+    move_params_v_reset = 0.0 # Reset potential of the membrane (-80 - -70 mV)
+    move_params_i_e = 9 # Constant input current (0-10 pA)
+    move_params_tau_syn_ex = 93.5
+    move_weight = 1
+    move_parameter_search = [params_e_l, params_c_m, params_tau_m, params_t_ref, params_v_th, params_v_reset, params_i_e, params_tau_syn_ex]
+    
+    # params for internal neurons
+    params_pg1 = 0 # in between 1-200Hz
+    params_pg2 = 200 # in between 1-200Hz
+    params_e_l = 0.0 # Resting Membrane Potential (-70mV)
+    params_c_m = 0.0 # Capacity of the membrane (0.5-1 microFaraday)
+    params_tau_m = 1.0 # Membrane time constant (1-100 ms)
+    params_t_ref = 0.0 # Duration of refractory period (1-5 ms)
+    params_v_th = 1.0 # Spike threshold (0.22-0.122 mV)
+    params_v_reset = 0.0 # Reset potential of the membrane (-80 - -70 mV)
+    params_i_e = 9 # Constant input current (0-10 pA)
+    params_tau_syn_ex = 93.5
+    parameter_search = [params_e_l, params_c_m, params_tau_m, params_t_ref, params_v_th, params_v_reset, params_i_e, params_tau_syn_ex]
+    pulse_time = 690
+
+    # running simulation
+    listNeuron = NeuronList(parameter_search, pulse_time=pulse_time)
+    listNeuron.connect_neurons()
+    listNeuron.add_noise((1, 99), params_pg1)
+    noise = listNeuron.add_noise((80,90), params_pg2)
+    listNeuron.add_external_neurons(move_parameter_search, move_weight)
+    nest.Simulate(pulse_time)
+    noise.rate = 0
+    nest.Simulate(1000)
+    print(listNeuron.get_metric())
     listNeuron.plot_spikes()
 
 def plot_weights():
@@ -291,6 +382,9 @@ def plot_weights():
     listNeuron.move_distances(steps=50)
     listNeuron.show_weight()
 
-# parameter_search()
-single_test()
+num_process = 8
+nest.total_num_virtual_procs = num_process
+parameter_search(num_process)
+# combine_results()
+# single_test()
 # plot_weights()
