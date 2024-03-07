@@ -260,9 +260,9 @@ def parameter_search(numprocess):
         params_t_ref = 0.0 # Duration of refractory period (1-5 ms)
         params_v_th = 1.0 # Spike threshold (0.22-0.122 mV)
         params_v_reset = 0.0 # Reset potential of the membrane (-80 - -70 mV)
-        params_pulse_time = np.arange(500, 700, 10)
+        params_pulse_time = np.arange(500, 700, 5)
         params_i_e = [0, 10] # Constant input current (0-10 pA)
-        params_tau_syn_ex = np.arange(start_tau_syn_ex, end_tau_syn_ex, 10)
+        params_tau_syn_ex = np.arange(start_tau_syn_ex, end_tau_syn_ex, 0.1)
         for pulse_time in params_pulse_time:
             for i_e in range(params_i_e[0], params_i_e[1]):    
                 for tau_syn_ex in params_tau_syn_ex:
