@@ -174,11 +174,11 @@ class NeuronList():
         sigma2 = 30
         # weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*-0.5*np.exp(-np.abs(k)/sigma1)
         # weight_calc = lambda k: A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)) + np.heaviside(k, 0)*0.4*np.exp(-np.abs(k)/sigma2)
-        weight_calc = lambda k: 10 * (A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)))
+        # weight_calc = lambda k: 10 * (A1*np.exp(-k**2/(2*sigma1**2)) - A2*np.exp(-k**2/(2*sigma2**2)))
         
-        # w = lambda a, z: (1.0/np.sqrt(a*np.pi))*np.exp(-z**2/a)
-        # J = lambda z: 5 * (1.1 * w(1/28, z) - w(1/20,z))
-        # weight_calc = lambda k: J(np.abs(k)/ POPULATION_SIZE)
+        w = lambda a, z: (1.0/np.sqrt(a*np.pi))*np.exp(-z**2/a)
+        J = lambda z: 5 * (1.1 * w(1/28, z) - w(1/20,z))
+        weight_calc = lambda k: J(np.abs(k)/ POPULATION_SIZE)
         
         # weight_calc = lambda k: 4 * (sigma2*np.exp(-k**2/(2*sigma1**2)) - sigma1*np.exp(-k**2/(2*sigma2**2)))/((sigma2 - sigma1))
         # while it != n2:
@@ -279,9 +279,9 @@ def parameter_search(rank, process):
         params_t_ref = 0.0 # Duration of refractory period (1-5 ms)
         params_v_th = 1.0 # Spike threshold (0.22-0.122 mV)
         params_v_reset = 0.0 # Reset potential of the membrane (-80 - -70 mV)
-        params_pulse_time = np.arange(300, 600, 5)
+        params_pulse_time = np.arange(600, 700, 5)
         params_i_e = [6, 10] # Constant input current (0-10 pA)
-        params_tau_syn_ex = np.arange(start_tau_syn_ex, end_tau_syn_ex, 1)
+        params_tau_syn_ex = np.arange(start_tau_syn_ex, end_tau_syn_ex, 0.1)
         for pulse_time in params_pulse_time:
             for i_e in range(params_i_e[0], params_i_e[1]):    
                 for tau_syn_ex in params_tau_syn_ex:
@@ -331,10 +331,10 @@ def single_test():
     params_t_ref = 0.0 # Duration of refractory period (1-5 ms)
     params_v_th = 1.0 # Spike threshold (0.22-0.122 mV)
     params_v_reset = 0.0 # Reset potential of the membrane (-80 - -70 mV)
-    params_i_e = 8.134 # Constant input current (0-10 pA)
-    params_tau_syn_ex = 86
+    params_i_e = 9 # Constant input current (0-10 pA)
+    params_tau_syn_ex = 80.8
     parameter_search = [params_e_l, params_c_m, params_tau_m, params_t_ref, params_v_th, params_v_reset, params_i_e, params_tau_syn_ex]
-    pulse_time = 556
+    pulse_time = 595
     listNeuron = NeuronList(parameter_search, pulse_time=pulse_time)
     listNeuron.connect_neurons()
     listNeuron.add_noise((1, 99), params_pg1)
@@ -354,8 +354,8 @@ def move_bump_gain_mod():
     move_params_t_ref = 0.0 # Duration of refractory period (1-5 ms)
     move_params_v_th = 1.0 # Spike threshold (0.22-0.122 mV)
     move_params_v_reset = 0.0 # Reset potential of the membrane (-80 - -70 mV)
-    move_params_i_e = 0 # Constant input current (0-10 pA)
-    move_params_tau_syn_ex = 0
+    move_params_i_e = 8.134 # Constant input current (0-10 pA)
+    move_params_tau_syn_ex = 86
     move_weight = [5, 5, 0, 0]
     move_parameter_search = [move_params_e_l, move_params_c_m, move_params_tau_m, move_params_t_ref, move_params_v_th, move_params_v_reset, move_params_i_e, move_params_tau_syn_ex]
     
@@ -408,9 +408,9 @@ if __name__ == "__main__":
     # 1 for single test
     if option == "1":
         single_test()
-    # 2 for parameter search
+    # 2 for plotting weights
     elif option == "2":
-        parameter_search([0,100])
+        plot_weights()
     # 3 for combine results
     elif option == "3":
         combine_results()
