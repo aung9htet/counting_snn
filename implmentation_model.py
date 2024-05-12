@@ -222,9 +222,9 @@ class Implementation_Model():
         """
         # Synapse Connection Management
         for neuron in self.move_high_neurons:
-            nest.Connect(self.high_neuron, neuron, syn_spec={'weight': 0.5 * 10**3})
+            nest.Connect(self.high_neuron, neuron, syn_spec={'weight': 0.48 * 10**3})
         for neuron in self.move_low_neurons:
-            nest.Connect(self.low_neuron, neuron, syn_spec={'weight': 0.5 * 10**3})
+            nest.Connect(self.low_neuron, neuron, syn_spec={'weight': 0.48 * 10**3})
 
     def connect_gain_ring(self):
         """
@@ -237,8 +237,8 @@ class Implementation_Model():
         # Synapse Connection Management
         for index in range(self.population_size):
             # Ring to Gain Mod Neuron Connection
-            nest.Connect(self.ring_neurons[index], self.move_high_neurons[index], syn_spec={'weight': 1.6 * 10**3})
-            nest.Connect(self.ring_neurons[index], self.move_low_neurons[index], syn_spec={'weight': 1.6 * 10**3})
+            nest.Connect(self.ring_neurons[index], self.move_high_neurons[index], syn_spec={'weight': 1.65 * 10**3})
+            nest.Connect(self.ring_neurons[index], self.move_low_neurons[index], syn_spec={'weight': 1.8 * 10**3})
             # Gain Mod Neuron to Ring Connection
             nest.Connect(self.move_high_neurons[index], self.ring_neurons[next_calc(index)], syn_spec={'weight': 5})
             nest.Connect(self.move_low_neurons[index], self.ring_neurons[prev_calc(index)], syn_spec={'weight': 5})
@@ -467,7 +467,7 @@ class Implementation_Run():
         plt.plot(weight_list)
         plt.show()
     
-    def plot_ring_behavior(self):
+    def plot_ring_behavior(self, title = None):
         """
             The following method gives a diagram to illustrate the behavior of neurons in ring attractor
             model.
@@ -476,6 +476,8 @@ class Implementation_Run():
             events = self.model.ring_spike_recorders[index].get("events")
             ts = events["times"]
             plt.plot(ts[ts>50], np.full(shape=len(ts[ts>50]),fill_value=index,dtype=np.int64), "k.")
+        if not title is None:
+            plt.title(title)
         plt.ylim([0, self.model.population_size])
         plt.xlabel("Timestep (0.1ms/step)")
         plt.ylabel("Neuron Representation")
@@ -507,12 +509,13 @@ class Implementation_Run():
         representation_rate = input("Representation Neuron Input Rate (Max: 150): ")
         self.model.external_input.rate = int(external_rate)
         self.model.representation_input.rate = int(representation_rate)
-        self.model.timestep = 30000
+        self.model.timestep = 10000
         self.model.run()
         self.model.external_input.rate = 0
         self.model.representation_input.rate = 0
         self.model.run()
-        self.plot_ring_behavior()
+        title = F"External Rate: {external_rate}, Representation Rate: {representation_rate}"
+        self.plot_ring_behavior(title)
         
 if __name__ == "__main__":
     init_introduction = "The following code is an implementation of a model for using homeostasis and ring attractor as a form of counting. These involves different parts/methods of the code that can be run amongst which the following are the options.\n Add -t as second args in script to run a test for ring attractor in -pbgm and -d"
