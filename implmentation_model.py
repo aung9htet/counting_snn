@@ -11,6 +11,7 @@ __email__ = "aung.htet@student.shu.ac.uk"
 
 import nest
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 import sys
 import os
@@ -448,6 +449,7 @@ class Implementation_Model():
         # Reset Network
         nest.ResetKernel()
         nest.set_verbosity("M_ERROR")
+        nest.rng_seed = np.random.randint(1, (2**31) - 1)
 
         # Simulation Parameters
         self.timestep = 10000       # default is 10000
@@ -763,7 +765,7 @@ class Implementation_Run():
             plt.plot(ts[ts>50], np.full(shape=len(ts[ts>50]),fill_value=index,dtype=np.int64), "k.")
         if not title is None:
             plt.title(title)
-        plt.ylim([0, len(self.model.perirhinal_fdn_neurons)])
+        plt.yticks(ticks=range(-1, len(self.model.perirhinal_fdn_neurons) + 1), labels=range(len(self.model.perirhinal_fdn_neurons) + 2))
         plt.xlabel("Timestep (0.1ms/step)")
         plt.ylabel("Neuron Representation")
 
@@ -860,9 +862,13 @@ class Implementation_Run():
         """
         self.model = Implementation_Model(representation=True, external=True)
         # Set up experiment layout
-        count_number = input("Please type which number the model should count: ")
+        count_number = int(input("Please type which number the model should count: "))
         vision_data = [0, 0, 0, 0, 0]
         choice_index = [0, 1, 2, 3, 4]
+        if count_number < 1:
+            count_number = 1
+        else:
+            count_number += 1
         for _ in range(int(count_number)):
             index_change = np.random.choice(choice_index)
             choice_index.remove(index_change)
@@ -873,34 +879,46 @@ class Implementation_Run():
             if vision_data[i] == 1:
                 print(i)
                 self.model.perirhinal_v_r_neurons[i].rate = 20
-        self.model.timestep = 100000
+        self.model.timestep = 50000
         self.model.run()
         
         # Start Drawing
         fig, axs = plt.subplots(1,2)
-        fig.set_size_inches(20,5)
-
+        fig.set_size_inches(28,10)
+        
         # Draw Ring Attractor Firing Rates
+        fig_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+        i = 0
         for index in range(self.model.population_size):
+            if (index % 20) == 0:
+                i+=1
             events = self.model.ring_spike_recorders[index].get("events")
             ts = events["times"]
-            axs[0].plot(ts[ts>50], np.full(shape=len(ts[ts>50]),fill_value=index,dtype=np.int64), "k.")
-        axs[0].set_title("Activity for Ring Attractor Neurons")
+            axs[0].plot(ts[ts>50], np.full(shape=len(ts[ts>50]),fill_value=index,dtype=np.int64), "k.", color = fig_colors[i])
         axs[0].set_ylim([0, self.model.population_size])
-        axs[0].set_xlabel("Timestep (0.1ms/step)")
-        axs[0].set_ylabel("Ring Attractor Neuron Representation")
+        axs[0].set_xlabel("Timestep", fontsize = 30)
+        axs[0].set_ylabel("Neuron Index", fontsize = 30)
+        axs[0].tick_params(axis='x', labelsize=25)
+        axs[0].tick_params(axis='y', labelsize=25)
 
         # Draw perirhinal vision cortex firing rates
+        window_frame = 300
         for index in range(len(self.model.perirhinal_fdn_neurons)):
             events = self.model.perirhinal_fdn_spike_recorders[index].get("events")
             ts = events["times"]
-            axs[1].plot(ts[ts>50], np.full(shape=len(ts[ts>50]),fill_value=index,dtype=np.int64), "k.")
-        axs[1].set_title("Activity for Perirhinal Familiarity Discrimination Neurons (Feedback)")
-        axs[1].set_ylim([-1, len(self.model.perirhinal_fdn_neurons)])
-        axs[1].set_yticklabels(range(len(self.model.perirhinal_fdn_neurons) + 1))
-        axs[1].set_xlabel("Timestep (0.1ms/step)")
-        axs[1].set_ylabel("Familiarity Discrimination Neuron Representation")
-
+            fr_list = []
+            timestep = []
+            for i in range(int(np.floor(self.model.total_timestep/window_frame))):
+                fr = len([x for x in ts if ((x >= (i * window_frame)) and (x < ((i + 1) * window_frame)))]) * (1000/window_frame)
+                fr_list.append(fr)
+                timestep.append(i * window_frame)
+            axs[1].plot(timestep, fr_list, lw=3.0, color=fig_colors[index + 1])
+        # axs[1].set_ylim([0.0, 1.0])
+        # axs[1].set_yticks([0,1,2,3,4])
+        axs[1].set_xlabel("Timestep", fontsize = 30)
+        axs[1].set_ylabel("Average Firing Rate", fontsize = 30)
+        axs[1].tick_params(axis='x', labelsize=25)
+        axs[1].tick_params(axis='y', labelsize=25)
         plt.show()
 
     def exp_1(self):
@@ -908,11 +926,63 @@ class Implementation_Run():
             The following method uses the perirhinal cortex familiarity discrimination neurons to collect data
             for anaylsing run time.
         """
-        for count_number in range(1,6):
+        for count_number in range(1 ,6):
             reaction_time_list = []
             for number_of_run in range(1,21):
                 print(F"Number Testing: {count_number}, Run Count: {number_of_run}")
                 self.model = Implementation_Model(representation=True, external=True)
+
+                # Experiment setup
+                vision_data = [0, 0, 0, 0, 0]
+                choice_index = [0, 1, 2, 3, 4]
+                for _ in range(int(count_number)):
+                    index_change = np.random.choice(choice_index)
+                    choice_index.remove(index_change)
+                    vision_data[index_change] = 1
+
+                # Set representation neuron to activate
+                for i in range(len(vision_data)):
+                    if vision_data[i] == 1:
+                        self.model.perirhinal_v_r_neurons[i].rate = 20
+                self.model.timestep = 40000
+                self.model.run()
+
+                events = self.model.perirhinal_fdn_spike_recorders[count_number - 1].get("events")
+                ts = events["times"]
+                ts_new = [x for x in ts if x > 0]
+                reaction_time = ts_new[0]
+                reaction_time_list.append(reaction_time)
+            print(reaction_time_list)
+            file_name = 'temp_save/data_count_' + str(count_number)
+            np.save(file_name, reaction_time_list)
+
+    def exp_2_t_test_setup(self):
+        """
+            The following method gets the reference fr needed for BG neuron to conduct t-test.
+            This collects the mean and sd at which the reaction time is detected.
+        """
+        bg_fr_mean_list = []
+        for run_index in range(21):
+            bg_fr_list = []
+            for count_number in range(1,6):
+                print(F"Representation Number: {count_number}, Run: {run_index}")
+                self.model = Implementation_Model(representation=True, external=True)
+                
+                # Set up Neurons and Recorders for bg
+                self.experiment_neuron = nest.Create('iaf_psc_alpha', params = self.exp1_parameters)
+                self.excitation_exp_neuron = nest.Create('poisson_generator', params={"rate": 100})
+                self.experiment_neuron_spike = nest.Create('spike_recorder')
+                self.experiment_neuron_multimeter = nest.Create('multimeter')
+                self.experiment_neuron_multimeter.set(record_from=["V_m"])
+
+                # Set up connection
+                # nest.Connect(self.excitation_exp_neuron, self.experiment_neuron, syn_spec={'weight': 1 * 10**3})
+                nest.Connect(self.model.high_neuron, self.experiment_neuron, syn_spec={'weight': 3 * 10**3})
+                nest.Connect(self.model.low_neuron, self.experiment_neuron, syn_spec={'weight': 3 * 10**3})
+
+                # Connect recorders
+                nest.Connect(self.experiment_neuron_multimeter, self.experiment_neuron)
+                nest.Connect(self.experiment_neuron, self.experiment_neuron_spike)
 
                 # Experiment setup
                 vision_data = [0, 0, 0, 0, 0]
@@ -932,96 +1002,295 @@ class Implementation_Run():
                 events = self.model.perirhinal_fdn_spike_recorders[count_number - 1].get("events")
                 ts = events["times"]
                 ts_new = [x for x in ts if x > 0]
-                reaction_time = ts_new[0]
-                reaction_time_list.append(reaction_time)
-            file_name = 'temp_save/data_count_' + str(count_number)
-            np.save(file_name, reaction_time_list)
-            
+                reaction_time_cortex = ts_new[0]
+
+                events = self.experiment_neuron_spike.get("events")
+                ts = events["times"]
+
+                x = 0
+                window_frame = 500
+                fr_bg = len([x for x in ts if ((x >= (reaction_time_cortex - 250)) and (x < (reaction_time_cortex + 250)))]) * (1000/window_frame)
+                bg_fr_list.append(fr_bg)
+            bg_fr_mean_list.append(np.sum(np.array(bg_fr_list))/len(bg_fr_list))
+        file_name = 'temp_save/bg_data_2'
+        np.save(file_name, bg_fr_mean_list)
+
+    def exp_2_data_analysis(self):
+        data = np.load('temp_save/bg_data.npy')
+        mean = np.sum(data)/ len(data)
+        sd = np.std(data)
+        p_value = 2*(1-stats.t.cdf(0.855, 29))
+        print(mean, sd)
+
     def exp_2(self):
         """
-            The following method runs the analyses for experiment 1 that is to determine the prediction
-            for reaction time.
+            The following method uses a neuron to determine the actual reaction time.
         """
-        count_number = 4
-        # for count_number in range(1,6):
-        self.model = Implementation_Model(representation=True, external=True)
-        
-        # Set up Neurons and Recorders for bg
-        self.experiment_neuron = nest.Create('iaf_psc_alpha', params = self.exp1_parameters)
-        self.excitation_exp_neuron = nest.Create('poisson_generator', params={"rate": 100})
-        self.experiment_neuron_spike = nest.Create('spike_recorder')
-        self.experiment_neuron_multimeter = nest.Create('multimeter')
-        self.experiment_neuron_multimeter.set(record_from=["V_m"])
+        for count_number in range(1,6):
+            self.model = Implementation_Model(representation=True, external=True)
+            
+            # Set up Neurons and Recorders for bg
+            self.experiment_neuron = nest.Create('iaf_psc_alpha', params = self.exp1_parameters)
+            self.excitation_exp_neuron = nest.Create('poisson_generator', params={"rate": 100})
+            self.experiment_neuron_spike = nest.Create('spike_recorder')
+            self.experiment_neuron_multimeter = nest.Create('multimeter')
+            self.experiment_neuron_multimeter.set(record_from=["V_m"])
 
-        # Set up connection
-        # nest.Connect(self.excitation_exp_neuron, self.experiment_neuron, syn_spec={'weight': 1 * 10**3})
-        nest.Connect(self.model.high_neuron, self.experiment_neuron, syn_spec={'weight': 3 * 10**3})
-        nest.Connect(self.model.low_neuron, self.experiment_neuron, syn_spec={'weight': 3 * 10**3})
+            # Set up connection
+            # nest.Connect(self.excitation_exp_neuron, self.experiment_neuron, syn_spec={'weight': 1 * 10**3})
+            nest.Connect(self.model.high_neuron, self.experiment_neuron, syn_spec={'weight': 3 * 10**3})
+            nest.Connect(self.model.low_neuron, self.experiment_neuron, syn_spec={'weight': 3 * 10**3})
 
-        # Connect recorders
-        nest.Connect(self.experiment_neuron_multimeter, self.experiment_neuron)
-        nest.Connect(self.experiment_neuron, self.experiment_neuron_spike)
+            # Connect recorders
+            nest.Connect(self.experiment_neuron_multimeter, self.experiment_neuron)
+            nest.Connect(self.experiment_neuron, self.experiment_neuron_spike)
 
-        # Experiment setup
-        vision_data = [0, 0, 0, 0, 0]
-        choice_index = [0, 1, 2, 3, 4]
-        for _ in range(int(count_number)):
-            index_change = np.random.choice(choice_index)
-            choice_index.remove(index_change)
-            vision_data[index_change] = 1
+            # Experiment setup
+            vision_data = [0, 0, 0, 0, 0]
+            choice_index = [0, 1, 2, 3, 4]
+            for _ in range(int(count_number)):
+                index_change = np.random.choice(choice_index)
+                choice_index.remove(index_change)
+                vision_data[index_change] = 1
 
-        # Set representation neuron to activate
-        for i in range(len(vision_data)):
-            if vision_data[i] == 1:
-                print(i)
-                self.model.perirhinal_v_r_neurons[i].rate = 20
-        self.model.timestep = 20000
-        self.model.run()
+            # Set representation neuron to activate
+            for i in range(len(vision_data)):
+                if vision_data[i] == 1:
+                    self.model.perirhinal_v_r_neurons[i].rate = 20
+            self.model.timestep = 20000
+            self.model.run()
 
-        # plt.figure()
-        events = self.experiment_neuron_spike.get("events")
-        ts = events["times"]
-        # plt.plot(ts[ts>50], np.full(shape=len(ts[ts>50]),fill_value=1,dtype=np.int64), "k.")
-        # plt.title("BG test")
-        # plt.xlabel("Timestep (0.1ms/step)")
-        # plt.ylabel("Neuron Representation")
+            # plt.figure()
+            events = self.experiment_neuron_spike.get("events")
+            ts = events["times"]
 
-        plt.figure()
-        fr_list = []
-        x_axis = []
-        x = 0
-        window_frame = 500
-        number_of_windows = int(np.floor(self.model.total_timestep/window_frame))
-        for spacing in range(number_of_windows):
-            fr_list.append(len([x for x in ts if ((x >= spacing * window_frame) and (x < ((spacing + 1) * window_frame)))]) * (1000/window_frame))
-            x_axis.append(x)
-            x += window_frame
-        plt.plot(x_axis, fr_list, 'o')
+            # plt.figure()
+            fr_list = []
+            x_axis = []
+            x = 0
+            window_frame = 500
+            number_of_windows = int(np.floor(self.model.total_timestep/window_frame))
+            for spacing in range(number_of_windows):
+                fr_list.append(len([x for x in ts if ((x >= spacing * window_frame) and (x < ((spacing + 1) * window_frame)))]) * (1000/window_frame))
+                x_axis.append(x)
+                x += window_frame
+            plt.plot(x_axis, fr_list, 'o')
 
-        self.plot_perirhinal_fdn_behavior("Perirhinal FDN Behavior")
-        plt.show()
+            # # i = 0
+            # # reaction_time = None
+            # # while reaction_time is None:
+            # #     test_significance = (fr_list[i] - 60.904761904761905)/(2.8851798970859255/np.sqrt(1))
+            # #     print(test_significance)
+            # #     if (test_significance < 0.05) or (test_significance > 0.95):
+            # #         i += 1
+            # #     else:
+            # #         reaction_time = x_axis[i]
+            
+            # reaction_time = 0
+            # curr_distance = 100
+            # for i in range(len(fr_list)):
+            #     distance = np.abs(fr_list[i] - 60.904761904761905)
+            #     if distance < curr_distance:
+            #         curr_distance = distance
+            #         reaction_time = x_axis[i]
+            fr_index = None
+            fr_checker = fr_list
+            while fr_index is None:
+                check_index = np.argmin(fr_checker)
+                if fr_list[check_index] < 55:
+                    fr_index = None
+                    fr_list.remove(fr_list[check_index])
+                else:
+                    fr_index = check_index
+            print(fr_list[fr_index])
+            reaction_time = x_axis[fr_index]
+            print(reaction_time)
+            # print(reaction_time)
+            self.plot_perirhinal_fdn_behavior("Perirhinal FDN Behavior")
+            plt.show()
+
+    def exp_3(self):
+        """
+            The following experiment gets the result for different stopping time.
+        """
+        error_list = []
+        for count_number in range(1,6):
+            error_count = []
+            for run_index in range(21):
+                print(F"Representation Number: {count_number}, Run: {run_index}")
+                self.model = Implementation_Model(representation=True, external=True)
+
+                # Experiment setup
+                vision_data = [0, 0, 0, 0, 0]
+                choice_index = [0, 1, 2, 3, 4]
+                for _ in range(int(count_number)):
+                    index_change = np.random.choice(choice_index)
+                    choice_index.remove(index_change)
+                    vision_data[index_change] = 1
+
+                # Set representation neuron to activate
+                for i in range(len(vision_data)):
+                    if vision_data[i] == 1:
+                        self.model.perirhinal_v_r_neurons[i].rate = 20
+                self.model.timestep = 15000
+                self.model.run()
+
+                error = False
+                for recorder_i in range(len(self.model.perirhinal_fdn_spike_recorders)):
+                    events = self.model.perirhinal_fdn_spike_recorders[recorder_i].get("events")
+                    ts = events["times"]
+                    print(ts)
+                    check_spike = len([x for x in ts if (x > 12000) and (x < 13000)])
+                    print(F"{recorder_i}: {check_spike}")
+                    if recorder_i == (count_number - 1):
+                        if check_spike == 0:
+                            error = False
+                    else:
+                        if check_spike > 0:
+                            error = True
+                
+                if error == True:
+                    error_count.append(1)
+                else:
+                    error_count.append(0)
+            error_list.append(error_count)
+        np.save("temp_save/error_data_12-13k", error_list)
 
     def read_exp1(self):
         """
             Display results for exp1
         """
-        reaction_times = []
-        numbers = []
-        for filename in os.listdir('temp_save/'):
-            path = 'temp_save/' + filename
-            reaction_times.append(np.sum(np.load(path))/len(np.load(path)))
-            numbers.append(int(path[-5]))
-        y_items = []
-        for i in numbers:
-            y_items.append(reaction_times[i - 1])
-        numbers.sort()
-        plt.figure()
-        plt.plot(numbers, y_items,'-xg')
-        plt.title("Reaction Time In Order Of Number Representation")
-        plt.xlabel("Number Representation")
-        plt.ylabel("Reaction Time (ms)")
+        plt.figure(figsize=(14,10))
+        home = 'temp_save/'
+        folder_list = ["900_tau", "950_tau", "1000_tau"]
+        legend_list = ["900ms", "950ms", "1000ms"]
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+        for folderindex in range(len(folder_list)):
+            foldername = folder_list[folderindex]
+            reaction_times = []
+            numbers = []
+            errors = []
+            folder_path = home + foldername +'/'            # plt.title("Reaction Time In Order Of Number Representation", fontsize=20)
+            for filename in os.listdir(folder_path):
+                path = folder_path + filename
+                reaction_times.append(np.sum(np.load(path))/len(np.load(path)))
+                print(F"Number Representation: {int(path[-5])}, Data: {np.load(path)}")
+                numbers.append(int(path[-5]))
+                std_error = np.std(np.load(path))
+                errors.append(std_error)
+            print(errors)
+            y_items = []
+            error_items = []
+            for i in numbers:
+                y_items.append(reaction_times[i - 1])
+                error_items.append(errors[i - 1])
+            numbers.sort()
+            for i in range(len(numbers)):
+                print(F"Number Representation: {numbers[i]}, Data: {np.load(path)[i]}")
+            plt.plot(numbers[:4], y_items[1:], color=colors[folderindex], linewidth=3.0)
+            print(colors[folderindex])
+            plt.errorbar(numbers[:4], y_items[1:], yerr = error_items[1:], fmt ='o', ecolor=colors[folderindex], ms=15.0, lw=3.0, color=colors[folderindex], label=legend_list[folderindex])
+            plt.xticks(np.linspace(1, 4, 4), ["1", "2", "3", "4"])
+            plt.xlabel("Number Representation", fontsize=30)
+            plt.ylabel("Reaction Time (ms)", fontsize=30)
+            plt.tick_params(axis='both', which='both', labelsize=25)
+            plt.ylim(top = 30000, bottom = 0)
+        plt.legend(loc="upper left", fontsize=25)
+        plt.show()
+    
+    def read_exp3(self):
+        """
+            Display results for exp1
+        """
+        plt.figure(figsize=(14,10))
+        datas = [np.load('temp_save/error_data_9-10k.npy'), np.load('temp_save/error_data_10-11k.npy'), np.load('temp_save/error_data_11-12k.npy'), np.load('temp_save/error_data_12-13k.npy')]
+        legend_name = ["9000ms - 10000ms", "10000ms - 11000ms", "11000ms - 12000ms", "12000ms - 13000ms",]
+        for data_index in range(len(datas)):
+            data = datas[data_index]
+            error_list = []
+            numbers = np.linspace(1, 4, 4)
+            for number in numbers:
+                error_total = 0
+                for error in data[(int(number) - 1)]:
+                    if error == 1:
+                        error_total += 1
+                error_rate = error_total/len(data[(int(number) - 1)]) * 100
+                error_list.append(error_rate)
+            plt.plot(numbers, error_list, "-o", label=legend_name[data_index], linewidth=3.0, ms= 15.0)
+        plt.legend(loc="upper left", fontsize=25)
+        plt.xlabel("Number Representation", fontsize=30)
+        plt.ylabel("Error Percentage (%)", fontsize=30)
+        plt.tick_params(axis='both', which='both', labelsize=25)
+        plt.xticks(np.linspace(1, 4, 4), ["1", "2", "3", "4"])
+        plt.ylim(top = 100, bottom = 0)
         plt.show()
 
+    def record_data(self, count_number):
+        """
+            The following method records the data for all spike records
+        """
+        data_set = []
+        for run_count in range(21):
+            print(F"Running Number:{count_number}, Running Index: {run_count}")
+            self.model = Implementation_Model(representation=True, external=True)
+
+            # Experiment setup
+            vision_data = [0, 0, 0, 0, 0]
+            choice_index = [0, 1, 2, 3, 4]
+            for _ in range(int(count_number)):
+                index_change = np.random.choice(choice_index)
+                choice_index.remove(index_change)
+                vision_data[index_change] = 1
+
+            # Set representation neuron to activate
+            for i in range(len(vision_data)):
+                if vision_data[i] == 1:
+                    self.model.perirhinal_v_r_neurons[i].rate = 20
+            self.model.timestep = 50000
+            self.model.run()
+            # Convert Data
+            high_spike = self.model.high_spike.get("events")["times"]
+            low_spike = self.model.low_spike.get("events")["times"]
+
+            ring_spike_recorders = []
+            for recorder in self.model.ring_spike_recorders:
+                ring_spike_recorders.append(recorder.get("events")["times"])
+            
+            move_high_spike_recorders = []
+            for recorder in self.model.move_high_spike_recorders:
+                move_high_spike_recorders.append(recorder.get("events")["times"])
+
+            move_low_spike_recorders = []
+            for recorder in self.model.move_low_spike_recorders:
+                move_low_spike_recorders.append(recorder.get("events")["times"])
+
+            perirhinal_fdn_spike_recorders = []
+            for recorder in self.model.perirhinal_fdn_spike_recorders:
+                perirhinal_fdn_spike_recorders.append(recorder.get("events")["times"])
+            
+            perirhinal_inhibitory_spike = self.model.perirhinal_inhibitory_spike.get("events")["times"]
+            perirhinal_decision_spike = self.model.perirhinal_decision_spike.get("events")["times"]
+            perirhinal_v_decision_spike = self.model.perirhinal_v_decision_spike.get("events")["times"]
+
+            spike_dict = {"high_spike": high_spike, "low_spike": low_spike, "ring_spike": ring_spike_recorders, "gain_high_spike": move_high_spike_recorders, "gain_low_spike": move_low_spike_recorders, "per_fdn_spike": perirhinal_fdn_spike_recorders, "per_in_spike": perirhinal_inhibitory_spike, "per_de_spike": perirhinal_decision_spike, "per_vde_spike": perirhinal_v_decision_spike}
+            data_set.append(spike_dict)
+            data_file = "model_data/data_spike" + str(count_number)
+            np.save(data_file, data_set)
+
+    def load_data(self, number=2, data_index = 1):
+        file_name = "model_data/data_spike" + str(number) + ".npy"
+        data = np.load(file_name, allow_pickle=True)[data_index]
+        high_spike_recorder = data.get("high_spike")
+        low_spike_recorder = data.get("low_spike")
+        ring_spike_recorders = data.get("ring_spike")
+        gain_high_spike_recorders = data.get("gain_high_spike")
+        gain_low_spike_recorders = data.get("gain_low_spike")
+        perirhinal_fdn_spike_recorders = data.get("per_fdn_spike")
+        perihinal_inhibitory_spike_recorder = data.get("per_in_spike")
+        perihinal_decision_spike_recorder = data.get("per_de_spike")
+        perihinal_vision_decision_spike_recorder = data.get("per_vde_spike")
+        print(high_spike_recorder)
+            
 # The following code runs the test cases depending on the arguments.
 if __name__ == "__main__":
     init_introduction = "The following code is an implementation of a model for using homeostasis and ring attractor as a form of counting. These involves different parts/methods of the code that can be run amongst which the following are the options.\n Add -t as second args in script to run a test for ring attractor in -pbgm and -d"
@@ -1039,6 +1308,10 @@ if __name__ == "__main__":
     row_10 = table_insert("-fd       ", "Debugger Full Model               ")
     row_11 = table_insert("-tpv      ", "Test Perirhinal Vision Cortex     ")
     row_12 = table_insert("-exp1     ", "Experiment 1 Analysis             ")
+    row_13 = table_insert("-exp2     ", "Experiment 2 Analysis             ")
+    row_14 = table_insert("-exp2s    ", "Experiment 2 Setup                ")
+    row_15 = table_insert("-exp2ds    ", "Experiment 2 Setup                ")
+    row_16 = table_insert("-rd        ", "Record Data for all recorders     ")
     args_print = init_introduction + row_1 + row_2 + row_3 + row_4 + row_5 + row_6 + row_7 + row_8 + row_9 + row_10 + row_11
     if len(sys.argv) > 1:
         run_type = str(sys.argv[1])
@@ -1083,3 +1356,21 @@ if __name__ == "__main__":
         implement.exp_1()
     elif run_type == "-rexp1":
         implement.read_exp1()
+    elif run_type == "-exp2":
+        implement.exp_2()
+    elif run_type == "-exp2s":
+        implement.exp_2_t_test_setup()
+    elif run_type == "-exp2ds":
+        implement.exp_2_data_analysis()
+    elif run_type == "-exp3":
+        implement.exp_3()
+    elif run_type == "-rexp3":
+        implement.read_exp3()
+    elif run_type == "-rd":
+        if len(sys.argv) > 2:
+            number_record = str(sys.argv[2])
+        else:
+            print("Please define args on number")
+        implement.record_data(int(number_record))
+    elif run_type == "-ld":
+        implement.load_data()
